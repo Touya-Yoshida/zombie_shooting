@@ -1,0 +1,357 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  cursor: none;
+}
+
+#video {
+  position: fixed;
+  inset: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#three {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#reticle {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  margin-top: -16px;
+  background:
+    linear-gradient(90deg, transparent 47%, #00ff88 47%, #00ff88 53%, transparent 53%),
+    linear-gradient(0deg, transparent 47%, #00ff88 47%, #00ff88 53%, transparent 53%);
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.6));
+  will-change: transform;
+  left: 0;
+  top: 0;
+  transform: translate(50vw, 50vh);
+  opacity: 0.9;
+}
+
+#reticle.firing {
+  background:
+    linear-gradient(90deg, transparent 47%, #ff4444 47%, #ff4444 53%, transparent 53%),
+    linear-gradient(0deg, transparent 47%, #ff4444 47%, #ff4444 53%, transparent 53%);
+}
+
+#hand-overlay {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 160px;
+  border: 2px solid rgba(255, 80, 80, 0.7);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+#hand-overlay.detected {
+  border-color: rgba(80, 255, 120, 0.85);
+}
+
+#hand-overlay.calibrating {
+  border-color: rgba(255, 220, 80, 0.9);
+}
+
+#hand-canvas {
+  display: block;
+  width: 100%;
+  height: 120px;
+}
+
+#hand-status {
+  font-size: 11px;
+  text-align: center;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  letter-spacing: 1px;
+}
+
+#hud-top {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+#weapon-label {
+  background: rgba(0, 0, 0, 0.55);
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  letter-spacing: 3px;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+#score-display {
+  text-align: right;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+
+#time-survived {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+#kills {
+  font-size: 13px;
+  color: #ffcc44;
+}
+
+#hud-bottom {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 200px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+#hp-container {
+  position: relative;
+  width: 280px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+#hp-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(90deg, #44ff66, #aaff44);
+  transition: width 0.15s linear, background 0.3s;
+}
+
+#hp-bar.low {
+  background: linear-gradient(90deg, #ff4444, #ffaa44);
+}
+
+#hp-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  text-shadow: 0 0 3px black;
+}
+
+#ammo-display {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+
+#ammo-current {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffcc44;
+}
+
+#ammo-current.low {
+  color: #ff4444;
+}
+
+#ammo-divider {
+  font-size: 18px;
+  opacity: 0.5;
+}
+
+#ammo-max {
+  font-size: 18px;
+  opacity: 0.7;
+}
+
+#banner {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-shadow: 0 0 8px black;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+
+#banner.show {
+  opacity: 1;
+}
+
+#start-overlay,
+#calibration-overlay,
+#gameover-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.overlay-card {
+  background: #1a1a22;
+  padding: 32px 48px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  text-align: center;
+  max-width: 520px;
+  border-radius: 8px;
+}
+
+.overlay-card h1 {
+  font-size: 28px;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+
+.overlay-card h2 {
+  font-size: 22px;
+  margin-bottom: 16px;
+}
+
+.overlay-card p {
+  color: #bbb;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.overlay-card ul {
+  text-align: left;
+  list-style: none;
+  margin-bottom: 24px;
+  color: #ddd;
+}
+
+.overlay-card ul li {
+  padding: 4px 0;
+}
+
+.overlay-card ul li b {
+  color: #ffcc44;
+}
+
+.overlay-card button {
+  background: #5a8;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 4px;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.overlay-card button:hover {
+  background: #6c9;
+}
+
+.overlay-card button#recalibrate-btn,
+.overlay-card button#calib-skip-btn {
+  background: #555;
+  font-size: 13px;
+  padding: 8px 16px;
+}
+
+.overlay-card button#recalibrate-btn:hover,
+.overlay-card button#calib-skip-btn:hover {
+  background: #666;
+}
+
+#calib-step {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+#calib-progress {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+#calib-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: #ffcc44;
+  transition: width 0.1s;
+}
+
+#calib-status {
+  margin: 12px 0;
+  font-size: 14px;
+  color: #ffcc44;
+  min-height: 20px;
+}
+
+#calib-instruction {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+#gameover-stats {
+  margin: 24px 0;
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+#gameover-stats span {
+  color: #ffcc44;
+  font-weight: 700;
+}
