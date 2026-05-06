@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # Opt in to Node 24 for any JS-based action that still ships Node 20
+  # (e.g. the actions/upload-artifact pinned by actions/upload-pages-artifact@v4).
+  # Node 20 will be removed from runners on 2026-09-16.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: read
   pages: write
