@@ -3,14 +3,29 @@ import { CONFIG } from '../config.js';
 import { Zombie } from './Zombie.js';
 
 export class ZombieSpawner {
-  constructor(scene) {
+  constructor(scene, camera = null) {
     this.scene = scene;
+    this.camera = camera;
     this.zombies = [];
     this.lastSpawnMs = 0;
     this.startTimeMs = 0;
     this._tmpPos = new THREE.Vector3();
     this.spawnIntervalMul = 1.0;
     this.maxConcurrentMul = 1.0;
+  }
+
+  // Clamp configured arc to the camera's actual horizontal FOV so zombies
+  // never spawn outside the visible frustum (with a small inset so a zombie's
+  // body sits comfortably inside the screen edge instead of half-clipped).
+  _visibleArc() {
+    const configured = CONFIG.ZOMBIES.SPAWN_FRONT_ARC_RAD ?? Math.PI;
+    if (!this.camera) return configured;
+    const vFov = (this.camera.fov ?? 70) * Math.PI / 180;
+    const aspect = this.camera.aspect ?? (window.innerWidth / window.innerHeight);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    const edgeMargin = 0.18; // ~10° inset on each side
+    const visible = Math.max(0.4, hFov - edgeMargin * 2);
+    return Math.min(configured, visible);
   }
 
   start(nowMs) {
@@ -88,7 +103,8 @@ export class ZombieSpawner {
 
   spawn(playerPos) {
     // Spawn within a forward arc only (camera is fixed looking down -Z).
-    const arc = CONFIG.ZOMBIES.SPAWN_FRONT_ARC_RAD ?? Math.PI;
+    // Arc is clamped to camera's actual horizontal FOV so spawns stay on-screen.
+    const arc = this._visibleArc();
     const a = (Math.random() - 0.5) * arc;
     const radius =
       CONFIG.ZOMBIES.SPAWN_RADIUS_MIN +

@@ -3,17 +3,23 @@ import * as THREE from 'three';
 const PALETTES = {
   flame_colonel:   { skin: 0xf4d6b6, cuff: 0x16243a, trim: 0xd4a948, glow: 0xffaa44 },
   pink_alchemist:  { skin: 0xffe1cd, cuff: 0xc8336c, trim: 0xfbf6ee, glow: 0xff66cc },
-  special_forces:  { skin: 0x1a1a20, cuff: 0x2a2a32, trim: 0xff4433, glow: 0xff8844 },
+  martial_artist:  { skin: 0xf4d2a8, cuff: 0xf4f0e6, trim: 0x1a1410, glow: 0xa8e8ff },
   sword_kirito:    { skin: 0x14141a, cuff: 0x222228, trim: 0xa0a0a8, glow: 0x66ccff }
 };
 
+// Lambert material with double-sided rendering — required so the mirrored
+// (left-side) hand still renders correctly when scale.x = -1 inverts winding.
 function mat(color, opts = {}) {
-  return new THREE.MeshLambertMaterial({ color, ...opts });
+  return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...opts });
 }
 
 function emissiveMat(color, intensity = 0.6) {
-  return new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: intensity });
+  return new THREE.MeshLambertMaterial({
+    color, emissive: color, emissiveIntensity: intensity, side: THREE.DoubleSide
+  });
 }
+
+const CHARS = ['flame_colonel', 'pink_alchemist', 'martial_artist', 'sword_kirito'];
 
 export class CharacterViewModel {
   constructor(camera) {
@@ -21,24 +27,57 @@ export class CharacterViewModel {
     this.group = new THREE.Group();
     camera.add(this.group);
     this.t = 0;
-    this.character = 'flame_colonel';
-    this.snapPrimed = false;
-    this.snapAnim = 0;
-    this.recoilAnim = 0;
-    this.swingAnim = 0;
-    this.boltAnim = 0;
 
-    this.hands = {
-      flame_colonel: this._buildSnapHand(),
-      pink_alchemist: this._buildPalmHand(),
-      special_forces: this._buildPistolHand(),
-      sword_kirito: this._buildSwordHand()
-    };
-    for (const id in this.hands) {
-      this.group.add(this.hands[id]);
-      this.hands[id].visible = false;
+    this.characters = { left: 'flame_colonel', right: 'flame_colonel' };
+
+    // Two parallel hand collections — one mounted on each side of the screen.
+    // Mirroring is achieved by negating the outer group's x-position and
+    // applying scale.x = -1 (so geometry & rotations look mirrored).
+    this.handsBySlot = { left: {}, right: {} };
+    for (const id of CHARS) {
+      this.handsBySlot.right[id] = this._buildHandFor(id, 'right');
+      this.handsBySlot.left[id] = this._buildHandFor(id, 'left');
+      this.group.add(this.handsBySlot.right[id]);
+      this.group.add(this.handsBySlot.left[id]);
+      this.handsBySlot.right[id].visible = false;
+      this.handsBySlot.left[id].visible = false;
     }
-    this.setCharacter(this.character);
+
+    this.anim = {
+      left: this._newAnimState(),
+      right: this._newAnimState()
+    };
+
+    this.setCharacters({ left: 'flame_colonel', right: 'flame_colonel' });
+  }
+
+  _newAnimState() {
+    return {
+      snapPrimed: false,
+      snapAnim: 0,
+      recoilAnim: 0,
+      swingAnim: 0,
+      boltAnim: 0,
+      smoothPrimed: 0
+    };
+  }
+
+  _buildHandFor(id, slot) {
+    let g;
+    if (id === 'flame_colonel') g = this._buildSnapHand();
+    else if (id === 'pink_alchemist') g = this._buildPalmHand();
+    else if (id === 'martial_artist') g = this._buildFistHand();
+    else if (id === 'sword_kirito') g = this._buildSwordHand();
+    else g = new THREE.Group();
+
+    if (slot === 'left') {
+      // Mount on the opposite side and mirror the geometry via negative x-scale.
+      g.position.x = -g.position.x;
+      if (g.userData.basePos) g.userData.basePos.x = -g.userData.basePos.x;
+      g.scale.x = -1;
+    }
+    g.userData.slot = slot;
+    return g;
   }
 
   _addCuff(g, p, opts = {}) {
@@ -49,7 +88,6 @@ export class CharacterViewModel {
     cuff.position.set(opts.x ?? 0.005, opts.y ?? -0.07, opts.z ?? 0);
     cuff.rotation.x = opts.rx ?? 0.35;
     g.add(cuff);
-    // trim ring
     const trim = new THREE.Mesh(
       new THREE.TorusGeometry(opts.r2 ?? 0.05, 0.006, 8, 18),
       mat(p.trim)
@@ -73,7 +111,6 @@ export class CharacterViewModel {
     const palm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.035), mat(p.skin));
     g.add(palm);
 
-    // Thumb (rotates outward)
     const thumbPivot = new THREE.Group();
     thumbPivot.position.set(-0.030, 0.01, 0.005);
     g.add(thumbPivot);
@@ -83,12 +120,10 @@ export class CharacterViewModel {
     thumbPivot.rotation.set(-0.3, 0, -0.6);
     g.userData.thumbPivot = thumbPivot;
 
-    // Index extended forward-up
     const idx = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.075, 0.018), mat(p.skin));
     idx.position.set(-0.020, 0.085, 0);
     g.add(idx);
 
-    // Middle (touching thumb in primed pose)
     const midPivot = new THREE.Group();
     midPivot.position.set(0, 0.045, 0);
     g.add(midPivot);
@@ -98,7 +133,6 @@ export class CharacterViewModel {
     midPivot.rotation.set(0.55, 0, 0);
     g.userData.midPivot = midPivot;
 
-    // Ring & pinky curled
     const ringPivot = new THREE.Group();
     ringPivot.position.set(0.018, 0.045, 0);
     g.add(ringPivot);
@@ -115,7 +149,6 @@ export class CharacterViewModel {
     pinkyPivot.add(pinky);
     pinkyPivot.rotation.set(1.0, 0, 0);
 
-    // Spark glow at thumb-middle contact
     const spark = new THREE.Mesh(
       new THREE.SphereGeometry(0.025, 10, 8),
       new THREE.MeshBasicMaterial({
@@ -143,7 +176,6 @@ export class CharacterViewModel {
     const palm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.10, 0.035), mat(p.skin));
     g.add(palm);
 
-    // 5 extended fingers
     const fingerData = [
       { x: -0.040, y: 0.015, len: 0.06, rotZ: -0.7, rotX: -0.1 },
       { x: -0.025, y: 0.075, len: 0.075, rotZ: 0, rotX: 0 },
@@ -159,7 +191,6 @@ export class CharacterViewModel {
       g.add(fin);
     }
 
-    // Pink palm glow
     const glow = new THREE.Mesh(
       new THREE.SphereGeometry(0.04, 14, 10),
       new THREE.MeshBasicMaterial({
@@ -174,63 +205,67 @@ export class CharacterViewModel {
     return g;
   }
 
-  _buildPistolHand() {
-    const p = PALETTES.special_forces;
+  _buildFistHand() {
+    const p = PALETTES.martial_artist;
     const g = new THREE.Group();
-    g.position.set(0.16, -0.22, -0.42);
-    g.rotation.set(-0.10, -0.20, 0.40);
+    g.position.set(0.18, -0.18, -0.40);
+    g.rotation.set(-0.10, -0.05, 0.10);
     g.userData.basePos = g.position.clone();
     g.userData.baseRot = g.rotation.clone();
 
-    // Tactical sleeve (black with red trim)
-    this._addCuff(g, p, { h: 0.08 });
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.035), mat(p.skin));
+    this._addCuff(g, p, { h: 0.10, r1: 0.052, r2: 0.058 });
+    const cuffStripe = new THREE.Mesh(
+      new THREE.TorusGeometry(0.058, 0.008, 8, 18),
+      mat(p.trim)
+    );
+    cuffStripe.position.set(0.005, -0.04, 0);
+    cuffStripe.rotation.x = Math.PI / 2 + 0.35;
+    g.add(cuffStripe);
+
+    const palm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.085, 0.085, 0.075),
+      mat(p.skin)
+    );
+    palm.position.set(0, 0.04, 0);
     g.add(palm);
 
-    // Thumb up (vertical)
-    const thumbPivot = new THREE.Group();
-    thumbPivot.position.set(-0.030, 0.01, 0);
-    g.add(thumbPivot);
-    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.07, 0.018), mat(p.skin));
-    thumb.position.set(0, 0.035, 0);
-    thumbPivot.add(thumb);
-    thumbPivot.rotation.set(0, 0, -1.2);
-
-    // Index forward (gun barrel)
-    const idx = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.10, 0.022), mat(p.skin));
-    idx.position.set(-0.018, 0.10, 0);
-    g.add(idx);
-
-    // Tactical sight on tip
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.008, 0.012), mat(p.trim));
-    sight.position.set(-0.018, 0.155, 0);
-    g.add(sight);
-
-    // Curled middle/ring/pinky
-    const offsets = [-0.005, 0.013, 0.030];
-    for (const x of offsets) {
-      const piv = new THREE.Group();
-      piv.position.set(x, 0.035, 0.012);
-      g.add(piv);
-      const f = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.045, 0.018), mat(p.skin));
-      f.position.set(0, 0.022, 0);
-      piv.add(f);
-      piv.rotation.set(1.3, 0, 0);
+    const knuckleY = 0.06;
+    for (let i = 0; i < 4; i++) {
+      const k = new THREE.Mesh(
+        new THREE.SphereGeometry(0.013, 10, 8),
+        mat(p.skin)
+      );
+      k.position.set(-0.030 + i * 0.020, knuckleY, -0.040);
+      g.add(k);
     }
 
-    // Muzzle flash placeholder
-    const flash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.045, 10, 8),
+    const thumb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.020, 0.040, 0.020),
+      mat(p.skin)
+    );
+    thumb.position.set(-0.040, 0.040, -0.020);
+    thumb.rotation.set(0, 0, 0.4);
+    g.add(thumb);
+
+    const shade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.080, 0.005, 0.04),
+      mat(0xc89868)
+    );
+    shade.position.set(0, 0.058, -0.020);
+    g.add(shade);
+
+    const aura = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 14, 10),
       new THREE.MeshBasicMaterial({
-        color: 0xffe49a, transparent: true, opacity: 0,
+        color: p.glow, transparent: true, opacity: 0,
         blending: THREE.AdditiveBlending, depthWrite: false
       })
     );
-    flash.position.set(-0.018, 0.18, 0);
-    g.add(flash);
-    g.userData.flash = flash;
+    aura.position.set(-0.005, 0.06, -0.06);
+    g.add(aura);
+    g.userData.aura = aura;
 
-    g.userData.sparkLocal = new THREE.Vector3(-0.018, 0.18, 0);
+    g.userData.sparkLocal = new THREE.Vector3(-0.005, 0.06, -0.10);
     return g;
   }
 
@@ -242,12 +277,10 @@ export class CharacterViewModel {
     g.userData.basePos = g.position.clone();
     g.userData.baseRot = g.rotation.clone();
 
-    // Black coat sleeve
     this._addCuff(g, p, { h: 0.09, r1: 0.05, r2: 0.055 });
     const palm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.05), mat(p.skin));
     g.add(palm);
 
-    // Curled fingers around grip (4 fingers)
     for (let i = 0; i < 4; i++) {
       const piv = new THREE.Group();
       piv.position.set(-0.024 + i * 0.016, 0.025, 0.022);
@@ -257,7 +290,6 @@ export class CharacterViewModel {
       piv.add(f);
       piv.rotation.set(1.5, 0, 0);
     }
-    // Thumb wrapping
     const thumbPivot = new THREE.Group();
     thumbPivot.position.set(-0.025, -0.005, -0.005);
     g.add(thumbPivot);
@@ -266,41 +298,35 @@ export class CharacterViewModel {
     thumbPivot.add(thumb);
     thumbPivot.rotation.set(-0.5, 0.2, -0.6);
 
-    // SWORD assembly (parented so it swings with the hand)
     const sword = new THREE.Group();
     sword.rotation.x = -0.25;
     g.add(sword);
     g.userData.sword = sword;
 
-    // Pommel
     const pommel = new THREE.Mesh(
       new THREE.SphereGeometry(0.018, 12, 8),
       mat(0x44444c)
     );
     pommel.position.set(0, -0.02, 0);
     sword.add(pommel);
-    // Grip wrap
     const grip = new THREE.Mesh(
       new THREE.CylinderGeometry(0.013, 0.013, 0.085, 10),
       mat(0x18181c)
     );
     grip.position.set(0, 0.025, 0);
     sword.add(grip);
-    // Crossguard
     const guard = new THREE.Mesh(
       new THREE.BoxGeometry(0.11, 0.013, 0.025),
       mat(p.trim)
     );
     guard.position.set(0, 0.075, 0);
     sword.add(guard);
-    // Blade
     const blade = new THREE.Mesh(
       new THREE.BoxGeometry(0.038, 0.62, 0.012),
       emissiveMat(0x8590a8, 0.25)
     );
     blade.position.set(0, 0.395, 0);
     sword.add(blade);
-    // Edge glow
     const edge = new THREE.Mesh(
       new THREE.BoxGeometry(0.044, 0.62, 0.014),
       new THREE.MeshBasicMaterial({
@@ -311,49 +337,69 @@ export class CharacterViewModel {
     edge.position.copy(blade.position);
     sword.add(edge);
     g.userData.edge = edge;
-    // Tip glow (point light at sword tip)
     const tipLight = new THREE.PointLight(p.glow, 0.6, 1.2, 2);
     tipLight.position.set(0, 0.7, 0);
     sword.add(tipLight);
     g.userData.tipLight = tipLight;
 
-    // Spark anchor at sword tip in world coords (computed via localToWorld)
     g.userData.sparkLocal = new THREE.Vector3(0, 0.7, 0);
     g.userData.sparkAnchor = sword;
     return g;
   }
 
+  // ---------- Public API ----------
+
+  // Back-compat — set both slots to the same character.
   setCharacter(id) {
-    if (!this.hands[id]) return;
-    this.character = id;
-    for (const cid in this.hands) {
-      this.hands[cid].visible = (cid === id);
+    this.setCharacters({ left: id, right: id });
+  }
+
+  setCharacters({ left, right }) {
+    this.characters.left = left ?? this.characters.left;
+    this.characters.right = right ?? this.characters.right;
+    for (const slot of ['left', 'right']) {
+      const activeId = this.characters[slot];
+      for (const id of CHARS) {
+        const g = this.handsBySlot[slot][id];
+        if (!g) continue;
+        g.visible = (id === activeId);
+      }
     }
   }
 
-  setSnapPrimed(b) {
-    this.snapPrimed = b;
+  setSnapPrimed(b, slot = null) {
+    if (slot) {
+      this.anim[slot].snapPrimed = !!b;
+    } else {
+      this.anim.left.snapPrimed = !!b;
+      this.anim.right.snapPrimed = !!b;
+    }
   }
 
-  triggerFire(kind) {
-    if (kind === 'flame') {
-      this.snapAnim = 0.22;
-    } else if (kind === 'magicBolt') {
-      this.boltAnim = 0.18;
-    } else if (kind === 'pistolShot') {
-      this.recoilAnim = 0.20;
-    } else if (kind === 'slash') {
-      this.swingAnim = 0.40;
-    }
+  triggerFire(kind, slot = 'right') {
+    const a = this.anim[slot];
+    if (!a) return;
+    if (kind === 'flame') a.snapAnim = 0.22;
+    else if (kind === 'magicBolt') a.boltAnim = 0.18;
+    else if (kind === 'fistAir') a.recoilAnim = 0.24;
+    else if (kind === 'slash') a.swingAnim = 0.40;
   }
 
   setVisible(v) { this.group.visible = v; }
   fire() { /* legacy compat */ }
   setWeapon() { /* legacy compat */ }
-  getMuzzleWorldPosition() { return this.getSparkWorldPosition(); }
 
-  getSparkWorldPosition(/* aimNDC */) {
-    const hand = this.hands[this.character];
+  getMuzzleWorldPosition(slot = 'right') {
+    return this.getSparkWorldPosition(slot);
+  }
+
+  getSparkWorldPosition(slot = 'right' /*, aimNDC */) {
+    // Back-compat: if first arg looks like NDC ({x,y}) instead of slot string,
+    // treat it as the legacy single-slot call and use the right hand.
+    if (typeof slot === 'object') slot = 'right';
+    const id = this.characters[slot];
+    const hand = this.handsBySlot[slot]?.[id];
+    if (!hand) return new THREE.Vector3();
     const local = (hand.userData.sparkLocal || new THREE.Vector3()).clone();
     const anchor = hand.userData.sparkAnchor || hand;
     anchor.localToWorld(local);
@@ -362,74 +408,80 @@ export class CharacterViewModel {
 
   update(dt) {
     this.t += dt;
-    if (this.snapAnim > 0) this.snapAnim = Math.max(0, this.snapAnim - dt);
-    if (this.recoilAnim > 0) this.recoilAnim = Math.max(0, this.recoilAnim - dt);
-    if (this.swingAnim > 0) this.swingAnim = Math.max(0, this.swingAnim - dt);
-    if (this.boltAnim > 0) this.boltAnim = Math.max(0, this.boltAnim - dt);
+    for (const slot of ['left', 'right']) {
+      const a = this.anim[slot];
+      if (a.snapAnim > 0) a.snapAnim = Math.max(0, a.snapAnim - dt);
+      if (a.recoilAnim > 0) a.recoilAnim = Math.max(0, a.recoilAnim - dt);
+      if (a.swingAnim > 0) a.swingAnim = Math.max(0, a.swingAnim - dt);
+      if (a.boltAnim > 0) a.boltAnim = Math.max(0, a.boltAnim - dt);
 
-    const active = this.hands[this.character];
-    if (!active) return;
+      const id = this.characters[slot];
+      const active = this.handsBySlot[slot]?.[id];
+      if (!active || !active.visible) continue;
+      this._animateHand(id, active, a, dt);
+    }
+  }
+
+  _animateHand(id, active, a, dt) {
     const base = active.userData.basePos;
     const baseRot = active.userData.baseRot;
+    if (!base || !baseRot) return;
 
-    // Gentle idle bob
     const bob = Math.sin(this.t * 1.6) * 0.004;
     active.position.y = base.y + bob;
 
-    if (this.character === 'flame_colonel') {
+    if (id === 'flame_colonel') {
       const midPiv = active.userData.midPivot;
       const thumbPiv = active.userData.thumbPivot;
       const spark = active.userData.spark;
-      // Snap-primed: middle bent toward thumb, spark dims to bright
-      const primed = this.snapPrimed ? 1 : 0;
-      // Smoothly blend
-      const smoothPrimed = (active.userData._smoothPrimed ?? 0) + (primed - (active.userData._smoothPrimed ?? 0)) * Math.min(1, dt * 12);
-      active.userData._smoothPrimed = smoothPrimed;
-      const fireU = this.snapAnim > 0 ? this.snapAnim / 0.22 : 0;
-      // When firing, fingers spring open
+      const primed = a.snapPrimed ? 1 : 0;
+      a.smoothPrimed += (primed - a.smoothPrimed) * Math.min(1, dt * 12);
+      const fireU = a.snapAnim > 0 ? a.snapAnim / 0.22 : 0;
       const openBoost = fireU;
-      if (midPiv) midPiv.rotation.x = 0.55 + smoothPrimed * 0.25 - openBoost * 0.6;
-      if (thumbPiv) thumbPiv.rotation.z = -0.6 - smoothPrimed * 0.15 - openBoost * 0.4;
+      if (midPiv) midPiv.rotation.x = 0.55 + a.smoothPrimed * 0.25 - openBoost * 0.6;
+      if (thumbPiv) thumbPiv.rotation.z = -0.6 - a.smoothPrimed * 0.15 - openBoost * 0.4;
       if (spark) {
-        spark.material.opacity = Math.max(smoothPrimed * 0.55, fireU * 0.95);
-        spark.scale.setScalar(0.7 + smoothPrimed * 0.4 + fireU * 1.0);
+        spark.material.opacity = Math.max(a.smoothPrimed * 0.55, fireU * 0.95);
+        spark.scale.setScalar(0.7 + a.smoothPrimed * 0.4 + fireU * 1.0);
       }
       active.position.x = base.x;
       active.rotation.copy(baseRot);
-    } else if (this.character === 'pink_alchemist') {
+    } else if (id === 'pink_alchemist') {
       const glow = active.userData.glow;
       if (glow) {
-        const open = pose => 0; // placeholder
-        const u = this.boltAnim > 0 ? this.boltAnim / 0.18 : 0;
+        const u = a.boltAnim > 0 ? a.boltAnim / 0.18 : 0;
         glow.material.opacity = 0.45 + u * 0.45 + Math.sin(this.t * 6) * 0.05;
         glow.scale.setScalar(1 + u * 0.4 + Math.sin(this.t * 8) * 0.05);
       }
       active.position.x = base.x;
       active.rotation.copy(baseRot);
-    } else if (this.character === 'special_forces') {
-      const u = this.recoilAnim > 0 ? this.recoilAnim / 0.20 : 0;
-      // Wrist snaps up: rotate hand upward (negative X rotation), kick back (positive Z)
-      active.rotation.x = baseRot.x - u * 0.55;
-      active.rotation.z = baseRot.z + u * 0.10;
-      active.position.y = base.y + bob + u * 0.03;
-      active.position.z = base.z + u * 0.03;
-      const flash = active.userData.flash;
-      if (flash) flash.material.opacity = u;
-    } else if (this.character === 'sword_kirito') {
-      // Swing animation: rotate the sword down sharply, then return
-      const u = this.swingAnim > 0 ? this.swingAnim / 0.40 : 0;
-      // u=1 just fired; eases down
-      const phase = 1 - u; // 0 → 1 over duration
-      // Quick swing in first 30%, return slow
+    } else if (id === 'martial_artist') {
+      const u = a.recoilAnim > 0 ? a.recoilAnim / 0.24 : 0;
+      const phase = 1 - u;
+      let thrust;
+      if (phase < 0.30) thrust = phase / 0.30;
+      else thrust = 1 - (phase - 0.30) / 0.70;
+      thrust = Math.max(0, Math.min(1, thrust));
+      active.position.x = base.x;
+      active.position.y = base.y + bob;
+      active.position.z = base.z - thrust * 0.18;
+      active.rotation.x = baseRot.x + thrust * 0.05;
+      active.rotation.z = baseRot.z - thrust * 0.05;
+      const aura = active.userData.aura;
+      if (aura) {
+        aura.material.opacity = 0.25 + thrust * 0.65;
+        aura.scale.setScalar(0.7 + thrust * 1.6);
+      }
+    } else if (id === 'sword_kirito') {
+      const u = a.swingAnim > 0 ? a.swingAnim / 0.40 : 0;
+      const phase = 1 - u;
       let swing;
       if (phase < 0.30) swing = phase / 0.30;
       else swing = 1 - (phase - 0.30) / 0.70;
       swing = Math.max(0, Math.min(1, swing));
-      // Rotate around X axis (downward swing)
       active.rotation.x = baseRot.x + swing * 1.6;
       active.rotation.z = baseRot.z - swing * 0.3;
       active.position.x = base.x + swing * 0.05;
-      // Edge glow brightens during swing
       const edge = active.userData.edge;
       if (edge) edge.material.opacity = 0.35 + swing * 0.55;
       const tipLight = active.userData.tipLight;

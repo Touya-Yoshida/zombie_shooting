@@ -50,24 +50,24 @@ export const CHARACTERS = {
       glow: '#ffaad4'
     }
   },
-  special_forces: {
-    id: 'special_forces',
-    name: '特殊部隊',
-    subtitle: 'Spec Ops',
+  martial_artist: {
+    id: 'martial_artist',
+    name: '格闘家',
+    subtitle: 'Martial Artist',
     palette: {
-      bg1: '#1a1d22',
-      bg2: '#0a0c10',
-      skin: '#dcc6b0',
-      skinShade: '#a08868',
-      hair: '#1a1612',
-      hairHi: '#3a2e22',
-      eye: '#1c1c20',
-      jacket: '#2a2e30',
-      jacketHi: '#3c4044',
-      trim: '#ff4433',
-      cape: '#1a1c1e',
-      mouth: '#7a3a3a',
-      glow: '#ff6644'
+      bg1: '#2a1a10',
+      bg2: '#180c08',
+      skin: '#f4d2a8',
+      skinShade: '#c89868',
+      hair: '#16100c',
+      hairHi: '#3a2618',
+      eye: '#1a1410',
+      jacket: '#f4f0e6',
+      jacketHi: '#ffffff',
+      trim: '#1a1410',
+      cape: '#a83820',
+      mouth: '#7a3838',
+      glow: '#a8e8ff'
     }
   },
   sword_kirito: {
@@ -219,7 +219,7 @@ export class VtuberAvatar {
 
     if (id === 'flame_colonel') this._drawFlameColonel(ctx, cx, cy, w, h, hs, p);
     else if (id === 'pink_alchemist') this._drawPinkAlchemist(ctx, cx, cy, w, h, hs, p);
-    else if (id === 'special_forces') this._drawSpecialForces(ctx, cx, cy, w, h, hs, p);
+    else if (id === 'martial_artist') this._drawMartialArtist(ctx, cx, cy, w, h, hs, p);
     else if (id === 'sword_kirito') this._drawSwordKirito(ctx, cx, cy, w, h, hs, p);
   }
 
@@ -465,53 +465,99 @@ export class VtuberAvatar {
     });
   }
 
-  _drawSpecialForces(ctx, cx, cy, w, h, hs, p) {
-    // Tactical vest
+  _drawMartialArtist(ctx, cx, cy, w, h, hs, p) {
+    // Karate gi (white) outer
     ctx.fillStyle = p.jacket;
     ctx.beginPath();
-    ctx.moveTo(cx - 56, cy + 4);
-    ctx.quadraticCurveTo(cx, cy - 6, cx + 56, cy + 4);
-    ctx.lineTo(cx + 70, h);
-    ctx.lineTo(cx - 70, h);
+    ctx.moveTo(cx - 60, cy + 6);
+    ctx.quadraticCurveTo(cx, cy - 4, cx + 60, cy + 6);
+    ctx.lineTo(cx + 78, h);
+    ctx.lineTo(cx - 78, h);
     ctx.closePath();
     ctx.fill();
-    // Vest plate
-    ctx.fillStyle = p.jacketHi;
-    ctx.fillRect(cx - 28, cy + 18, 56, 50);
-    // Shoulder strap
-    ctx.fillStyle = p.trim;
-    ctx.fillRect(cx - 32, cy + 14, 64, 4);
-    ctx.fillRect(cx - 5, cy + 14, 10, 50);
 
-    // Arm
+    // Gi shadow seam down center (V-collar opening)
+    ctx.fillStyle = p.skin;
+    ctx.beginPath();
+    ctx.moveTo(cx - 16, cy + 8);
+    ctx.lineTo(cx + 16, cy + 8);
+    ctx.lineTo(cx + 4, cy + 38);
+    ctx.lineTo(cx - 4, cy + 38);
+    ctx.closePath();
+    ctx.fill();
+
+    // Crossing lapels
+    ctx.fillStyle = p.jacketHi;
+    ctx.beginPath();
+    ctx.moveTo(cx - 16, cy + 8);
+    ctx.lineTo(cx, cy + 36);
+    ctx.lineTo(cx - 32, cy + 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + 16, cy + 8);
+    ctx.lineTo(cx, cy + 36);
+    ctx.lineTo(cx + 32, cy + 30);
+    ctx.closePath();
+    ctx.fill();
+
+    // Black belt
+    ctx.fillStyle = p.trim;
+    ctx.fillRect(cx - 56, cy + 70, 112, 10);
+    // belt knot
+    ctx.fillRect(cx - 14, cy + 68, 8, 16);
+    ctx.fillRect(cx - 4, cy + 68, 8, 16);
+    // belt tails
+    ctx.fillRect(cx - 12, cy + 80, 4, 14);
+    ctx.fillRect(cx - 2, cy + 80, 4, 14);
+
+    // Right arm — extended forward in punch
     this._drawArmAndSnap(ctx, cx + 50, cy + 14, hs, p, {
-      armLen: 50,
-      glove: '#1a1a20',
+      armLen: 56,
+      glove: p.skin,
       sleeve: p.jacket,
       cuff: p.trim,
-      sleeveWidth: 16
+      sleeveWidth: 18
     });
+    // Left arm — pulled back in chamber position
     ctx.strokeStyle = p.jacket;
-    ctx.lineWidth = 16;
+    ctx.lineWidth = 18;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(cx - 50, cy + 14);
-    ctx.quadraticCurveTo(cx - 60, cy + 60, cx - 54, cy + 92);
+    ctx.quadraticCurveTo(cx - 70, cy + 50, cx - 64, cy + 80);
     ctx.stroke();
-    ctx.fillStyle = '#1a1a20';
+    // Cuff trim on left
+    ctx.strokeStyle = p.trim;
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(cx - 54, cy + 96, 7, 0, Math.PI * 2);
+    ctx.moveTo(cx - 70, cy + 78);
+    ctx.lineTo(cx - 58, cy + 82);
+    ctx.stroke();
+    // Left fist (chambered)
+    ctx.fillStyle = p.skin;
+    ctx.beginPath();
+    ctx.arc(cx - 64, cy + 84, 9, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = p.skinShade;
+    ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i += 2) {
+      ctx.beginPath();
+      ctx.arc(cx - 64 + i * 2, cy + 80, 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // Neck
     ctx.fillStyle = p.skin;
-    ctx.fillRect(cx - 8, cy - 12, 16, 18);
+    ctx.fillRect(cx - 9, cy - 12, 18, 22);
+    ctx.fillStyle = p.skinShade;
+    ctx.fillRect(cx - 9, cy + 6, 18, 4);
 
-    // Head with helmet + goggles
+    // Head — short black hair + headband
     this._drawHead(ctx, cx, cy - 30, p, {
-      hairStyle: 'tactical',
-      eyeStyle: 'goggles',
-      mouthOpen: hs.snapFired ? 0.5 : 0.05,
+      hairStyle: 'martial',
+      eyeStyle: 'sharp',
+      mouthOpen: hs.snapFired ? 0.85 : 0.10,
       brow: 'serious'
     });
   }
@@ -800,6 +846,44 @@ export class VtuberAvatar {
       // Mount rail (front)
       ctx.fillStyle = p.trim;
       ctx.fillRect(cx - 4, cy - 32, 8, 4);
+    } else if (hairStyle === 'martial') {
+      // Short cropped black hair
+      ctx.fillStyle = p.hair;
+      ctx.beginPath();
+      ctx.moveTo(cx - 32, cy - 4);
+      ctx.quadraticCurveTo(cx - 34, cy - 36, cx, cy - 38);
+      ctx.quadraticCurveTo(cx + 34, cy - 36, cx + 32, cy - 4);
+      ctx.lineTo(cx + 30, cy - 12);
+      ctx.quadraticCurveTo(cx, cy - 6, cx - 30, cy - 12);
+      ctx.closePath();
+      ctx.fill();
+      // Forehead bangs
+      ctx.fillStyle = p.hairHi;
+      ctx.beginPath();
+      ctx.moveTo(cx - 22, cy - 22);
+      ctx.lineTo(cx - 12, cy - 14);
+      ctx.lineTo(cx - 4, cy - 22);
+      ctx.lineTo(cx + 4, cy - 14);
+      ctx.lineTo(cx + 14, cy - 22);
+      ctx.lineTo(cx + 22, cy - 14);
+      ctx.lineTo(cx + 22, cy - 28);
+      ctx.lineTo(cx - 22, cy - 28);
+      ctx.closePath();
+      ctx.fill();
+      // Red headband
+      ctx.fillStyle = p.cape;
+      ctx.fillRect(cx - 34, cy - 16, 68, 7);
+      // headband knot on the side
+      ctx.beginPath();
+      ctx.moveTo(cx - 34, cy - 16);
+      ctx.lineTo(cx - 44, cy - 12);
+      ctx.lineTo(cx - 38, cy - 6);
+      ctx.lineTo(cx - 34, cy - 9);
+      ctx.closePath();
+      ctx.fill();
+      // headband trailing tails
+      ctx.fillRect(cx - 46, cy - 4, 4, 14);
+      ctx.fillRect(cx - 40, cy - 2, 3, 12);
     } else if (hairStyle === 'kirito') {
       // Spiky black hair (anime swordsman)
       ctx.fillStyle = p.hair;

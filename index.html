@@ -44,8 +44,32 @@
         <p>カメラに手を映し、<b>指パッチン</b>で炎を放ってゾンビを焼き尽くせ。</p>
 
         <div class="select-section">
-          <div class="select-label">キャラクターを選択</div>
+          <div class="select-label">ハンドモード</div>
+          <div id="hand-mode-select">
+            <button type="button" class="hand-mode-card selected" data-handmode="same">
+              <div class="mode-name">両手同じキャラ</div>
+              <div class="mode-desc">どちらの手でも発動</div>
+            </button>
+            <button type="button" class="hand-mode-card" data-handmode="dual">
+              <div class="mode-name">左右別キャラ</div>
+              <div class="mode-desc">二刀流 — 手ごとに技</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="select-section">
+          <div class="select-label" id="char-select-label">キャラクターを選択</div>
           <div id="character-select"></div>
+          <div id="dual-character-select" style="display:none">
+            <div class="dual-row">
+              <div class="dual-label">左手</div>
+              <div class="char-grid" id="character-select-left"></div>
+            </div>
+            <div class="dual-row">
+              <div class="dual-label">右手</div>
+              <div class="char-grid" id="character-select-right"></div>
+            </div>
+          </div>
         </div>
 
         <div class="select-section">

@@ -241,6 +241,90 @@ export class Effects {
     });
   }
 
+  spawnFistAir(origin, direction, opts = {}) {
+    const speed = opts.speed ?? 44;
+    const damage = opts.damage ?? 55;
+    const lifetime = opts.lifetime ?? 1.4;
+    const hitRadius = opts.hitRadius ?? 0.85;
+    const onHit = opts.onHit;
+
+    const dir = direction.clone();
+    if (dir.lengthSq() < 1e-8) dir.set(0, 0, -1);
+    dir.normalize();
+
+    const group = new THREE.Group();
+    group.position.copy(origin);
+    group.lookAt(_vTmp.copy(origin).add(dir));
+
+    // Fist body — a stout box rounded by a sphere overlay
+    const fistMat = new THREE.MeshBasicMaterial({
+      color: 0xeaf6ff,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.32), fistMat);
+    group.add(palm);
+    const palmCap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 10), fistMat);
+    palmCap.position.set(0, 0, -0.14);
+    group.add(palmCap);
+
+    // Knuckle row on the leading face
+    for (let i = 0; i < 4; i++) {
+      const k = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 8), fistMat);
+      k.position.set(-0.15 + i * 0.10, 0.06, -0.22);
+      group.add(k);
+    }
+
+    // Thumb wrap
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.20, 0.12), fistMat);
+    thumb.position.set(-0.22, -0.04, -0.10);
+    group.add(thumb);
+
+    // Air swirl halo (large, faint)
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0xa8e8ff,
+      transparent: true,
+      opacity: 0.40,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.65, 14, 10), haloMat);
+    group.add(halo);
+
+    // Outer pressure wave ring
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x66c8ff,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 10, 24), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.z = 0.05;
+    group.add(ring);
+
+    const light = new THREE.PointLight(0xa8d8ff, 1.6, 6, 2);
+    group.add(light);
+
+    this.scene.add(group);
+
+    this.fistAirs = this.fistAirs || [];
+    this.fistAirs.push({
+      group, palm, palmCap, halo, ring, light,
+      velocity: dir.clone().multiplyScalar(speed),
+      forward: dir.clone(),
+      damage, hitRadius,
+      lifetime, maxLife: lifetime,
+      onHit,
+      hit: false,
+      _t: 0
+    });
+  }
+
   spawnMagicBolt(origin, direction, opts = {}) {
     this.spawnFireball(origin, direction, {
       speed: 56,
@@ -736,9 +820,74 @@ export class Effects {
     this._updateMissiles(dt, zombies);
     this._updateRepulsors(dt, zombies);
     this._updateSlashes(dt, zombies);
+    this._updateFistAirs(dt, zombies);
     this._updateBursts(dt);
     this._updateBurns(dt);
     this._updateLockMarkers(dt, camera);
+  }
+
+  _updateFistAirs(dt, zombies) {
+    if (!this.fistAirs || this.fistAirs.length === 0) return;
+    for (let i = this.fistAirs.length - 1; i >= 0; i--) {
+      const f = this.fistAirs[i];
+      f._t += dt;
+      f.lifetime -= dt;
+
+      if (!f.hit) {
+        f.group.position.x += f.velocity.x * dt;
+        f.group.position.y += f.velocity.y * dt;
+        f.group.position.z += f.velocity.z * dt;
+
+        // Animate halo + ring (visual wind pressure)
+        const pulse = 1 + 0.10 * Math.sin(f._t * 26);
+        f.palm.scale.setScalar(pulse);
+        f.palmCap.scale.setScalar(pulse);
+        f.halo.scale.setScalar(1 + 0.20 * Math.sin(f._t * 18));
+        f.ring.rotation.z += dt * 9;
+        f.ring.scale.setScalar(1 + f._t * 0.6);
+        f.light.intensity = 1.6 + Math.sin(f._t * 24) * 0.3;
+
+        // Fade ring as it expands
+        f.ring.material.opacity = Math.max(0, 0.55 - f._t * 0.4);
+
+        let hit = null;
+        const hitR = f.hitRadius;
+        const hitR2 = hitR * hitR;
+        for (const z of zombies) {
+          if (!z || z.isDead?.() || z.state === 'dying' || !z.mesh) continue;
+          const dx = f.group.position.x - z.mesh.position.x;
+          const dy = f.group.position.y - (z.mesh.position.y + 1.0);
+          const dz = f.group.position.z - z.mesh.position.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < hitR2) { hit = z; break; }
+        }
+
+        if (hit) {
+          f.hit = true;
+          this.spawnBurst(f.group.position.clone(), {
+            count: 22,
+            radius: 0.5,
+            speed: 6,
+            lifetime: 0.45,
+            colors: { hot: 0xeaf6ff, cold: 0x4080a0 },
+            flashColor: 0xcce8ff
+          });
+          if (f.onHit) f.onHit(hit, f.damage, f.group.position.clone());
+        }
+      }
+
+      if (f.hit || f.lifetime <= 0) {
+        this.scene.remove(f.group);
+        f.group.traverse((n) => {
+          if (n.geometry) n.geometry.dispose?.();
+          if (n.material) {
+            if (Array.isArray(n.material)) n.material.forEach((m) => m.dispose());
+            else n.material.dispose?.();
+          }
+        });
+        this.fistAirs.splice(i, 1);
+      }
+    }
   }
 
   _updateSlashes(dt, zombies) {

@@ -7,6 +7,7 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/zombie_shooting/' : '/',
   server: {
     host: true,
-    port: 5173
+    port: 5273,
+    strictPort: false
   }
 }));

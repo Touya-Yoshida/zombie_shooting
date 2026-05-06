@@ -388,10 +388,100 @@ html, body {
   font-weight: 600;
 }
 
-#character-select {
+#character-select,
+.char-grid {
   display: flex;
   gap: 12px;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+#hand-mode-select {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.hand-mode-card {
+  flex: 1;
+  background: #15151c;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: #fff;
+  text-align: center;
+  font-family: inherit;
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.hand-mode-card:hover {
+  background: #1d1d28;
+  border-color: rgba(120, 200, 255, 0.4);
+}
+
+.hand-mode-card.selected {
+  border-color: #ffaa66;
+  background: #2a1d14;
+  box-shadow: 0 0 10px rgba(255, 160, 80, 0.3);
+}
+
+.hand-mode-card .mode-name {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.hand-mode-card .mode-desc {
+  font-size: 11px;
+  color: #aaa;
+  letter-spacing: 1px;
+}
+
+#dual-character-select {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dual-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dual-label {
+  flex: 0 0 40px;
+  text-align: center;
+  font-weight: 700;
+  color: #ffcc66;
+  letter-spacing: 2px;
+  font-size: 13px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255, 200, 100, 0.3);
+  border-radius: 4px;
+  padding: 6px 4px;
+}
+
+.char-card.compact {
+  width: 90px;
+  padding: 4px;
+}
+
+.char-card.compact canvas {
+  width: 80px;
+  height: 96px;
+}
+
+.char-card.compact .char-name {
+  font-size: 11px;
+}
+
+.char-card.compact .char-sub {
+  font-size: 9px;
 }
 
 .char-card {

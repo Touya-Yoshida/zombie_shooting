@@ -39,6 +39,11 @@ const finalTime = document.getElementById('final-time');
 const finalKills = document.getElementById('final-kills');
 const restartBtn = document.getElementById('restart-btn');
 const characterSelect = document.getElementById('character-select');
+const dualCharacterSelect = document.getElementById('dual-character-select');
+const characterSelectLeft = document.getElementById('character-select-left');
+const characterSelectRight = document.getElementById('character-select-right');
+const charSelectLabel = document.getElementById('char-select-label');
+const handModeSelect = document.getElementById('hand-mode-select');
 const modeSelect = document.getElementById('mode-select');
 const scoreboardList = document.getElementById('scoreboard-list');
 const scoreboardTabs = document.querySelectorAll('.scoreboard-tab');
@@ -57,51 +62,144 @@ const SELECT_KEY = 'flame_alchemist_select_v1';
 const stored = (() => {
   try { return JSON.parse(localStorage.getItem(SELECT_KEY) || '{}'); } catch { return {}; }
 })();
-let selectedCharacter = (CHARACTERS[stored.character] && stored.character !== 'robo_pilot')
-  ? stored.character
-  : 'flame_colonel';
+const isValidChar = (id) => CHARACTERS[id] && id !== 'robo_pilot' && id !== 'special_forces';
+let selectedCharacter = isValidChar(stored.character) ? stored.character : 'flame_colonel';
+let handMode = stored.handMode === 'dual' ? 'dual' : 'same';
+let selectedRight = isValidChar(stored.rightCharacter) ? stored.rightCharacter : selectedCharacter;
+let selectedLeft = isValidChar(stored.leftCharacter) ? stored.leftCharacter : selectedCharacter;
 let selectedMode = stored.mode === 'endless' ? 'endless' : 'timed';
 
 function persistSelection() {
   try {
-    localStorage.setItem(SELECT_KEY, JSON.stringify({ character: selectedCharacter, mode: selectedMode }));
+    localStorage.setItem(SELECT_KEY, JSON.stringify({
+      character: selectedCharacter,
+      handMode,
+      leftCharacter: selectedLeft,
+      rightCharacter: selectedRight,
+      mode: selectedMode
+    }));
   } catch {}
 }
 
+function effectiveCharacters() {
+  if (handMode === 'same') return { left: selectedCharacter, right: selectedCharacter };
+  return { left: selectedLeft, right: selectedRight };
+}
+
+function _makeCard(id, { compact = false, selectedId, onPick }) {
+  const c = CHARACTERS[id];
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'char-card' + (compact ? ' compact' : '') + (id === selectedId ? ' selected' : '');
+  card.dataset.char = id;
+  const cv = document.createElement('canvas');
+  cv.width = compact ? 80 : 120;
+  cv.height = compact ? 96 : 144;
+  card.appendChild(cv);
+  const name = document.createElement('div');
+  name.className = 'char-name';
+  name.textContent = c.name;
+  card.appendChild(name);
+  const sub = document.createElement('div');
+  sub.className = 'char-sub';
+  sub.textContent = c.subtitle;
+  card.appendChild(sub);
+  card.addEventListener('click', () => onPick(id));
+  drawCharacterPreview(cv, id);
+  return card;
+}
+
+function _refreshCardSelection(container, selectedId) {
+  for (const el of container.querySelectorAll('.char-card')) {
+    el.classList.toggle('selected', el.dataset.char === selectedId);
+  }
+}
+
+function applyCharacterSelection() {
+  const eff = effectiveCharacters();
+  abilitySystem.setCharacters?.(eff);
+  gunView.setCharacters?.(eff);
+  // Avatar / demo follow whichever character was last interacted with.
+  // For 'same' mode that's selectedCharacter; for 'dual' mode we show the right hand.
+  const focus = handMode === 'same' ? selectedCharacter : selectedRight;
+  handOverlay.setCharacter(focus);
+  handDemo?.setCharacter(focus);
+  updateAbilityHint();
+}
+
 function buildCharacterCards() {
+  // Single-grid (same mode)
   characterSelect.innerHTML = '';
   for (const id of Object.keys(CHARACTERS)) {
-    const c = CHARACTERS[id];
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'char-card' + (id === selectedCharacter ? ' selected' : '');
-    card.dataset.char = id;
-    const cv = document.createElement('canvas');
-    cv.width = 120;
-    cv.height = 144;
-    card.appendChild(cv);
-    const name = document.createElement('div');
-    name.className = 'char-name';
-    name.textContent = c.name;
-    card.appendChild(name);
-    const sub = document.createElement('div');
-    sub.className = 'char-sub';
-    sub.textContent = c.subtitle;
-    card.appendChild(sub);
-    card.addEventListener('click', () => {
-      selectedCharacter = id;
-      persistSelection();
-      handOverlay.setCharacter(id);
-      abilitySystem.setCharacter(id);
-      gunView.setCharacter?.(id);
-      handDemo?.setCharacter(id);
-      updateAbilityHint();
-      for (const el of characterSelect.querySelectorAll('.char-card')) {
-        el.classList.toggle('selected', el.dataset.char === id);
+    const card = _makeCard(id, {
+      selectedId: selectedCharacter,
+      onPick: (picked) => {
+        selectedCharacter = picked;
+        // Keep dual selections in sync until the user enters dual mode.
+        if (handMode === 'same') { selectedRight = picked; selectedLeft = picked; }
+        persistSelection();
+        _refreshCardSelection(characterSelect, selectedCharacter);
+        applyCharacterSelection();
       }
     });
     characterSelect.appendChild(card);
-    drawCharacterPreview(cv, id);
+  }
+
+  // Dual-grid (dual mode) — left and right rows
+  characterSelectLeft.innerHTML = '';
+  characterSelectRight.innerHTML = '';
+  for (const id of Object.keys(CHARACTERS)) {
+    characterSelectLeft.appendChild(_makeCard(id, {
+      compact: true,
+      selectedId: selectedLeft,
+      onPick: (picked) => {
+        selectedLeft = picked;
+        persistSelection();
+        _refreshCardSelection(characterSelectLeft, selectedLeft);
+        applyCharacterSelection();
+      }
+    }));
+    characterSelectRight.appendChild(_makeCard(id, {
+      compact: true,
+      selectedId: selectedRight,
+      onPick: (picked) => {
+        selectedRight = picked;
+        persistSelection();
+        _refreshCardSelection(characterSelectRight, selectedRight);
+        applyCharacterSelection();
+      }
+    }));
+  }
+
+  applyHandModeUI();
+}
+
+function applyHandModeUI() {
+  if (handMode === 'same') {
+    characterSelect.style.display = '';
+    dualCharacterSelect.style.display = 'none';
+    if (charSelectLabel) charSelectLabel.textContent = 'キャラクターを選択';
+  } else {
+    characterSelect.style.display = 'none';
+    dualCharacterSelect.style.display = '';
+    if (charSelectLabel) charSelectLabel.textContent = '左右それぞれ選択';
+  }
+  if (handModeSelect) {
+    for (const el of handModeSelect.querySelectorAll('.hand-mode-card')) {
+      el.classList.toggle('selected', el.dataset.handmode === handMode);
+    }
+  }
+}
+
+function bindHandModeCards() {
+  if (!handModeSelect) return;
+  for (const card of handModeSelect.querySelectorAll('.hand-mode-card')) {
+    card.addEventListener('click', () => {
+      handMode = card.dataset.handmode;
+      persistSelection();
+      applyHandModeUI();
+      applyCharacterSelection();
+    });
   }
 }
 
@@ -208,14 +306,14 @@ function renderGameoverScoreboard(mode, highlightRecord) {
 const ABILITY_INFO = {
   flame_colonel:  { label: 'FLAME',   desc: '指パッチン → 火球' },
   pink_alchemist: { label: 'BOLT',    desc: '開いた掌 → 魔法弾連射' },
-  special_forces: { label: 'PISTOL',  desc: '指鉄砲で狙う → 手首スナップで発射' },
+  martial_artist: { label: 'FIST',    desc: 'こぶしを突き出す → 拳の空気弾' },
   sword_kirito:   { label: 'SLASH',   desc: '剣を振り下ろすと斬撃が飛ぶ' }
 };
 
 const DIFFICULTY = {
   flame_colonel:  { spawnInterval: 1.85, maxConcurrent: 0.55 },
   pink_alchemist: { spawnInterval: 0.85, maxConcurrent: 1.10 },
-  special_forces: { spawnInterval: 1.10, maxConcurrent: 0.85 },
+  martial_artist: { spawnInterval: 1.05, maxConcurrent: 0.90 },
   sword_kirito:   { spawnInterval: 1.00, maxConcurrent: 1.00 }
 };
 
@@ -237,18 +335,19 @@ const poseClassifier = new PoseClassifier();
 const calibration = new Calibration();
 const gameState = new GameState();
 const weaponSys = new WeaponSystem(audio, gunView);
-const zombieSpawner = new ZombieSpawner(scene);
+const zombieSpawner = new ZombieSpawner(scene, camera);
 const hud = new HUD();
 const reticle = new Reticle();
 const handOverlay = new HandStatusOverlay(video, selectedCharacter);
 const raycaster = new THREE.Raycaster();
 const playerPos = new THREE.Vector3(0, CONFIG.PLAYER.EYE_HEIGHT, 0);
 const abilitySystem = new AbilitySystem({ audio, effects, gunView, camera, raycaster });
-abilitySystem.setCharacter(selectedCharacter);
-abilitySystem.onFire = (kind /*, pose */) => {
+abilitySystem.setCharacters(effectiveCharacters());
+gunView.setCharacters(effectiveCharacters());
+abilitySystem.onFire = (kind, slot /*, pose */) => {
   reticle.flash();
   handOverlay.notifySnapFired();
-  gunView.triggerFire?.(kind);
+  gunView.triggerFire?.(kind, slot);
 };
 
 window.addEventListener('resize', () => handleResize(camera, renderer));
@@ -333,17 +432,38 @@ function finishCalibration() {
 }
 
 function updateAbilityHint() {
-  const info = ABILITY_INFO[selectedCharacter] || ABILITY_INFO.flame_colonel;
-  hud.setAbility(info.label);
+  const eff = effectiveCharacters();
+  const lInfo = ABILITY_INFO[eff.left] || ABILITY_INFO.flame_colonel;
+  const rInfo = ABILITY_INFO[eff.right] || ABILITY_INFO.flame_colonel;
+  if (handMode === 'same' || eff.left === eff.right) {
+    hud.setAbility(rInfo.label);
+  } else {
+    hud.setAbility(`${lInfo.label} / ${rInfo.label}`);
+  }
+}
+
+function combinedDifficulty() {
+  const eff = effectiveCharacters();
+  const dl = DIFFICULTY[eff.left] || { spawnInterval: 1, maxConcurrent: 1 };
+  const dr = DIFFICULTY[eff.right] || { spawnInterval: 1, maxConcurrent: 1 };
+  if (handMode === 'same' || eff.left === eff.right) {
+    return dr;
+  }
+  // Dual: average the multipliers (combined firepower / threat).
+  return {
+    spawnInterval: (dl.spawnInterval + dr.spawnInterval) / 2,
+    maxConcurrent: (dl.maxConcurrent + dr.maxConcurrent) / 2
+  };
 }
 
 function enterPlay() {
   poseClassifier.reset();
   zombieSpawner.reset();
-  zombieSpawner.setDifficultyMultipliers(DIFFICULTY[selectedCharacter] || {});
-  abilitySystem.setCharacter(selectedCharacter);
+  zombieSpawner.setDifficultyMultipliers(combinedDifficulty());
+  const eff = effectiveCharacters();
+  abilitySystem.setCharacters(eff);
   abilitySystem.reset();
-  gunView.setCharacter(selectedCharacter);
+  gunView.setCharacters(eff);
   gameState.setMode(selectedMode);
   gameState.startGame(performance.now());
   zombieSpawner.start(performance.now());
@@ -351,8 +471,13 @@ function enterPlay() {
     modeBadge.textContent = gameState.isEndless() ? 'ENDLESS' : 'TIMED 3:00';
   }
   updateAbilityHint();
-  const info = ABILITY_INFO[selectedCharacter] || ABILITY_INFO.flame_colonel;
-  hud.showBanner(`${info.label} — ${info.desc}`, 2400);
+  const lInfo = ABILITY_INFO[eff.left] || ABILITY_INFO.flame_colonel;
+  const rInfo = ABILITY_INFO[eff.right] || ABILITY_INFO.flame_colonel;
+  if (handMode === 'same' || eff.left === eff.right) {
+    hud.showBanner(`${rInfo.label} — ${rInfo.desc}`, 2400);
+  } else {
+    hud.showBanner(`L:${lInfo.label} / R:${rInfo.label}`, 2400);
+  }
 }
 
 function showGameOver(nowMs, victory = false) {
@@ -363,11 +488,15 @@ function showGameOver(nowMs, victory = false) {
   finalKills.textContent = gameState.kills;
 
   const submitMode = gameState.isEndless() ? 'endless' : 'timed';
+  const eff = effectiveCharacters();
+  const submitChar = (handMode === 'same' || eff.left === eff.right)
+    ? eff.right
+    : `${eff.left}+${eff.right}`;
   const submission = submitScore({
     kills: gameState.kills,
     survivedMs,
     mode: submitMode,
-    character: selectedCharacter,
+    character: submitChar,
     cleared: victory
   });
   finalScore.textContent = submission.record.score;
@@ -466,7 +595,8 @@ function loop(now) {
     const handPosed = pose.snapPrimed || pose.openPalm || pose.pointingIndex || pose.pistolPose || pose.gripPose || pose.twoHandPush;
     handOverlay.setSnapPrimed(handPosed);
     handOverlay.draw(result);
-    gunView.setSnapPrimed?.(pose.snapPrimed);
+    gunView.setSnapPrimed?.(pose.left?.snapPrimed, 'left');
+    gunView.setSnapPrimed?.(pose.right?.snapPrimed, 'right');
 
     abilitySystem.update(pose, now, dt, { zombies: zombieSpawner.zombies, gameState });
 
@@ -517,8 +647,9 @@ requestAnimationFrame((t) => {
 });
 
 buildCharacterCards();
+bindHandModeCards();
 bindModeCards();
 bindScoreboardTabs();
 renderScoreboard();
-handDemo?.setCharacter(selectedCharacter);
+handDemo?.setCharacter(handMode === 'same' ? selectedCharacter : selectedRight);
 handDemo?.step();

@@ -291,110 +291,129 @@ const DEMOS = {
       }
     }
   },
-  special_forces: {
-    duration: 3.4,
-    title: '🔫 指鉄砲 → 手首スナップ発射',
+  martial_artist: {
+    duration: 3.0,
+    title: '👊 こぶしを突き出す → 拳の空気弾',
     captions: [
-      { t: 0.00, text: '指で「銃」を作る' },
-      { t: 0.20, text: '人差し指で標的を狙う' },
-      { t: 0.55, text: '手首を上にスナップ' },
-      { t: 0.75, text: '発射（一撃必殺）' }
+      { t: 0.00, text: '手をグーに固める' },
+      { t: 0.25, text: '腰だめに引き寄せて構える' },
+      { t: 0.55, text: 'カメラに向かって突き出す！' },
+      { t: 0.78, text: '拳の空気弾が飛ぶ' }
     ],
     stateAt(t) {
-      if (t < 0.20) {
-        const u = ease(t / 0.20);
+      if (t < 0.25) {
+        const u = ease(t / 0.25);
         return {
           curls: {
-            thumb: lerp(0.6, 0.0, u),
-            index: lerp(0.85, 0.05, u),
-            middle: lerp(0.85, 0.85, u),
-            ring: 0.85,
-            pinky: 0.85
+            thumb: lerp(0.4, 0.7, u),
+            index: lerp(0.5, 0.92, u),
+            middle: lerp(0.5, 0.92, u),
+            ring: lerp(0.5, 0.92, u),
+            pinky: lerp(0.5, 0.92, u)
           },
-          wristTilt: 0,
-          aim: 0
+          fistScale: 1.0,
+          chamber: 0
         };
       } else if (t < 0.55) {
-        const u = (t - 0.20) / 0.35;
+        const u = ease((t - 0.25) / 0.30);
         return {
-          curls: { thumb: 0.0, index: 0.05, middle: 0.85, ring: 0.85, pinky: 0.85 },
-          wristTilt: 0,
-          aim: u,
-          aimingHold: true
+          curls: { thumb: 0.7, index: 0.92, middle: 0.92, ring: 0.92, pinky: 0.92 },
+          fistScale: lerp(1.0, 0.85, u),
+          chamber: u
         };
-      } else if (t < 0.75) {
-        const u = ease((t - 0.55) / 0.20);
+      } else if (t < 0.78) {
+        const u = ease((t - 0.55) / 0.23);
         return {
-          curls: { thumb: 0.0, index: 0.05, middle: 0.85, ring: 0.85, pinky: 0.85 },
-          wristTilt: u * -0.7,
-          aim: 1,
+          curls: { thumb: 0.7, index: 0.92, middle: 0.92, ring: 0.92, pinky: 0.92 },
+          fistScale: lerp(0.85, 1.6, u),
+          thrust: u,
           firing: u
         };
       } else {
-        const u = ease((t - 0.75) / 0.25);
+        const u = ease((t - 0.78) / 0.22);
         return {
-          curls: { thumb: lerp(0.0, 0.6, u), index: lerp(0.05, 0.85, u), middle: 0.85, ring: 0.85, pinky: 0.85 },
-          wristTilt: lerp(-0.7, 0, u),
-          missile: 1
+          curls: { thumb: lerp(0.7, 0.45, u), index: lerp(0.92, 0.55, u), middle: lerp(0.92, 0.55, u), ring: lerp(0.92, 0.55, u), pinky: lerp(0.92, 0.55, u) },
+          fistScale: lerp(1.6, 1.0, u),
+          airFist: 1
         };
       }
     },
     drawExtras(ctx, lm, w, h, state) {
-      const indexTipPx = { x: lm[8].x * w, y: lm[8].y * h };
-      const target = { x: w * 0.5, y: h * 0.16 };
-      // Aim laser
-      if ((state.aim ?? 0) > 0) {
-        ctx.strokeStyle = `rgba(255, 80, 60, ${0.4 + state.aim * 0.4})`;
-        ctx.lineWidth = 1.4;
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(indexTipPx.x, indexTipPx.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        // Crosshair on target
-        ctx.strokeStyle = '#ff4433';
+      const wristPx = { x: lm[0].x * w, y: lm[0].y * h };
+      const palmCx = ((lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 4) * w;
+      const palmCy = ((lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 4) * h;
+
+      // Chamber (pull-back) wind indicator
+      if ((state.chamber ?? 0) > 0.05 && !(state.firing ?? 0)) {
+        const u = state.chamber;
+        ctx.strokeStyle = `rgba(168, 232, 255, ${0.3 + u * 0.4})`;
         ctx.lineWidth = 2;
-        const r = 14 + Math.sin(performance.now() * 0.01) * 2;
-        ctx.beginPath();
-        ctx.arc(target.x, target.y, r, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(target.x - 18, target.y); ctx.lineTo(target.x - 8, target.y);
-        ctx.moveTo(target.x + 8, target.y); ctx.lineTo(target.x + 18, target.y);
-        ctx.moveTo(target.x, target.y - 18); ctx.lineTo(target.x, target.y - 8);
-        ctx.moveTo(target.x, target.y + 8); ctx.lineTo(target.x, target.y + 18);
-        ctx.stroke();
+        for (let i = 0; i < 3; i++) {
+          const a = Math.PI * 0.25 + i * 0.5;
+          const r = 28 + i * 8;
+          ctx.beginPath();
+          ctx.arc(palmCx, palmCy, r, a, a + 0.6);
+          ctx.stroke();
+        }
       }
-      // Muzzle flash + shot line
+
+      // Forward thrust shockwave
       if ((state.firing ?? 0) > 0.05) {
         const u = state.firing;
-        ctx.fillStyle = `rgba(255, 220, 120, ${u})`;
+        const r = 24 + u * 50;
+        const g = ctx.createRadialGradient(palmCx, palmCy, 4, palmCx, palmCy, r);
+        g.addColorStop(0, `rgba(255, 255, 255, ${0.85 * u})`);
+        g.addColorStop(0.4, `rgba(168, 232, 255, ${0.55 * u})`);
+        g.addColorStop(1, 'rgba(80, 160, 220, 0)');
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(indexTipPx.x, indexTipPx.y, 8 + u * 12, 0, Math.PI * 2);
+        ctx.arc(palmCx, palmCy, r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = `rgba(255, 240, 180, ${u * 0.95})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(indexTipPx.x, indexTipPx.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.stroke();
-      }
-      // Wrist snap arrow indicator
-      if ((state.wristTilt ?? 0) < -0.1) {
-        ctx.strokeStyle = '#ffcc44';
+        // Speed lines
+        ctx.strokeStyle = `rgba(180, 232, 255, ${u})`;
         ctx.lineWidth = 2;
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(palmCx + Math.cos(a) * (r - 14), palmCy + Math.sin(a) * (r - 14));
+          ctx.lineTo(palmCx + Math.cos(a) * (r + 6), palmCy + Math.sin(a) * (r + 6));
+          ctx.stroke();
+        }
+      }
+
+      // Air-fist projectile flying away (toward target above)
+      if ((state.airFist ?? 0) > 0.05) {
+        const target = { x: w * 0.5, y: h * 0.10 };
+        const u = state.airFist;
+        // animate continuously through the airFist phase using performance time
+        const k = ((performance.now() * 0.0009) % 1);
+        const fx = lerp(palmCx, target.x, k);
+        const fy = lerp(palmCy, target.y, k);
+        const fr = 18 - k * 6;
+        // Halo
+        const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fr * 1.8);
+        g.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+        g.addColorStop(0.5, 'rgba(168, 232, 255, 0.55)');
+        g.addColorStop(1, 'rgba(80, 160, 220, 0)');
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(w * 0.18, h * 0.85);
-        ctx.lineTo(w * 0.18, h * 0.55);
-        ctx.lineTo(w * 0.14, h * 0.62);
-        ctx.moveTo(w * 0.18, h * 0.55);
-        ctx.lineTo(w * 0.22, h * 0.62);
-        ctx.stroke();
-        ctx.fillStyle = '#ffcc44';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('SNAP UP', w * 0.06, h * 0.5);
+        ctx.arc(fx, fy, fr * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        // Knuckle row
+        ctx.fillStyle = 'rgba(220, 244, 255, 0.95)';
+        for (let i = 0; i < 4; i++) {
+          ctx.beginPath();
+          ctx.arc(fx - 9 + i * 6, fy - 4, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // PUNCH! caption during the strike
+      if ((state.firing ?? 0) > 0.4) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('PUNCH!', w / 2, h * 0.32);
       }
     }
   },

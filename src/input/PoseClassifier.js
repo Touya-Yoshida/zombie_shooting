@@ -53,7 +53,6 @@ function detectPointing(lm, t) {
 }
 
 function detectPistolPose(lm, t) {
-  // index extended + thumb extended (out/up) + others curled
   const indexExt = fingerExt(lm, LM.INDEX_MCP, LM.INDEX_TIP, t);
   const thumbExt = fingerRatio(lm, LM.THUMB_MCP, LM.THUMB_TIP) > 1.30;
   const midCurl = !fingerExt(lm, LM.MIDDLE_MCP, LM.MIDDLE_TIP, t);
@@ -63,7 +62,6 @@ function detectPistolPose(lm, t) {
 }
 
 function detectGripPose(lm, t) {
-  // All four main fingers curled (fist or holding)
   const indexCurl = !fingerExt(lm, LM.INDEX_MCP, LM.INDEX_TIP, t);
   const midCurl = !fingerExt(lm, LM.MIDDLE_MCP, LM.MIDDLE_TIP, t);
   const ringCurl = !fingerExt(lm, LM.RING_MCP, LM.RING_TIP, t);
@@ -71,21 +69,49 @@ function detectGripPose(lm, t) {
   return indexCurl && midCurl && ringCurl && pinkyCurl;
 }
 
+function emptyHandResult() {
+  return {
+    present: false,
+    aimNDC: null,
+    snapPrimed: false,
+    snapFired: false,
+    openPalm: false,
+    pointingIndex: false,
+    indexCurled: false,
+    pistolPose: false,
+    gripPose: false,
+    wristSnapUp: false,
+    swingDown: false,
+    punchFired: false,
+    aimSource: null
+  };
+}
+
 export class PoseClassifier {
   constructor() {
     this.profile = null;
     this.absentFrames = 0;
-    this.snapLatched = false;
-    this.lastSnapDistance = null;
-    this.smoothAimX = null;
-    this.smoothAimY = null;
-    this.indexExtendedLatched = false;
     this.lastTwoHandPush = false;
+    this.hands = {
+      left: this._newHandState(),
+      right: this._newHandState()
+    };
+  }
 
-    this.wristYHistory = [];
-    this.handCenterHistory = [];
-    this.wristSnapCooldown = 0;
-    this.swingCooldown = 0;
+  _newHandState() {
+    return {
+      snapLatched: false,
+      lastSnapDistance: null,
+      smoothAimX: null,
+      smoothAimY: null,
+      indexExtendedLatched: false,
+      wristYHistory: [],
+      handCenterHistory: [],
+      palmSizeHistory: [],
+      wristSnapCooldown: 0,
+      swingCooldown: 0,
+      punchCooldown: 0
+    };
   }
 
   setProfile(profile) {
@@ -94,25 +120,33 @@ export class PoseClassifier {
 
   reset() {
     this.absentFrames = 0;
-    this.snapLatched = false;
-    this.lastSnapDistance = null;
-    this.smoothAimX = null;
-    this.smoothAimY = null;
-    this.indexExtendedLatched = false;
     this.lastTwoHandPush = false;
-    this.wristYHistory = [];
-    this.handCenterHistory = [];
-    this.wristSnapCooldown = 0;
-    this.swingCooldown = 0;
+    this.hands.left = this._newHandState();
+    this.hands.right = this._newHandState();
+  }
+
+  _resetHandTransient(slot) {
+    const s = this.hands[slot];
+    s.snapLatched = false;
+    s.indexExtendedLatched = false;
+    s.wristYHistory = [];
+    s.handCenterHistory = [];
+    s.palmSizeHistory = [];
+    s.lastSnapDistance = null;
   }
 
   classify(result, nowMs) {
     const out = {
       present: false,
       twoHands: false,
-      aimNDC: this.smoothAimX !== null ? { x: this.smoothAimX, y: this.smoothAimY } : null,
-      absentFrames: this.absentFrames,
+      twoHandPush: false,
+      twoHandPushFired: false,
       reloadRequested: false,
+      absentFrames: this.absentFrames,
+      left: emptyHandResult(),
+      right: emptyHandResult(),
+      // Top-level convenience aliases (back-compat with single-hand consumers)
+      aimNDC: null,
       snapPrimed: false,
       snapFired: false,
       openPalm: false,
@@ -122,50 +156,113 @@ export class PoseClassifier {
       gripPose: false,
       wristSnapUp: false,
       swingDown: false,
-      twoHandPush: false,
-      twoHandPushFired: false,
+      punchFired: false,
       aimSource: null
     };
 
     const hasHands = result && result.landmarks && result.landmarks.length > 0;
     if (!hasHands) {
       this.absentFrames++;
-      this.snapLatched = false;
-      this.indexExtendedLatched = false;
       this.lastTwoHandPush = false;
-      this.wristYHistory = [];
-      this.handCenterHistory = [];
+      this._resetHandTransient('left');
+      this._resetHandTransient('right');
       out.absentFrames = this.absentFrames;
       if (this.absentFrames === CONFIG.POSE.ABSENT_FRAMES_FOR_RELOAD) {
         out.reloadRequested = true;
       }
       return out;
     }
-
     if (this.absentFrames > 0) this.absentFrames = 0;
     out.present = true;
     out.twoHands = result.landmarks.length >= 2;
 
-    let dominantIdx = 0;
-    if (result.handedness && result.handedness.length > 1) {
-      let bestScore = -1;
-      for (let i = 0; i < result.handedness.length; i++) {
-        const cat = result.handedness[i][0];
-        if (cat.categoryName === 'Right' && cat.score > bestScore) {
-          bestScore = cat.score;
-          dominantIdx = i;
+    // Map hand indices to left/right slots based on MediaPipe handedness.
+    const slotAssign = { left: -1, right: -1 };
+    const used = new Set();
+    if (result.handedness && result.handedness.length > 0) {
+      for (let i = 0; i < result.landmarks.length; i++) {
+        const cat = result.handedness[i]?.[0];
+        if (!cat) continue;
+        const slot = cat.categoryName === 'Right' ? 'right' : 'left';
+        if (slotAssign[slot] < 0) {
+          slotAssign[slot] = i;
+          used.add(i);
         }
       }
+      // If a slot is still empty but a hand was unassigned (e.g. both labeled
+      // the same), drop the leftover into the empty slot.
+      for (const slot of ['left', 'right']) {
+        if (slotAssign[slot] < 0) {
+          for (let i = 0; i < result.landmarks.length; i++) {
+            if (!used.has(i)) { slotAssign[slot] = i; used.add(i); break; }
+          }
+        }
+      }
+    } else {
+      slotAssign.right = 0;
     }
-    const lm = result.landmarks[dominantIdx];
+
+    for (const slot of ['left', 'right']) {
+      const idx = slotAssign[slot];
+      if (idx < 0) {
+        this._resetHandTransient(slot);
+        out[slot] = emptyHandResult();
+        continue;
+      }
+      out[slot] = this._classifyHand(result.landmarks[idx], this.hands[slot], nowMs);
+    }
+
+    // Two-hand push (open palms, wrists close)
+    if (slotAssign.left >= 0 && slotAssign.right >= 0) {
+      const lmL = result.landmarks[slotAssign.left];
+      const lmR = result.landmarks[slotAssign.right];
+      const fingerT = CONFIG.POSE.FINGER_EXT_THRESHOLD;
+      const palmA = detectOpenPalm(lmL, fingerT);
+      const palmB = detectOpenPalm(lmR, fingerT);
+      const wristDist = dist2D(lmL[LM.WRIST], lmR[LM.WRIST]);
+      const palmRef = dist2D(lmR[LM.WRIST], lmR[LM.MIDDLE_MCP]) || 0.001;
+      const wristRatio = wristDist / palmRef;
+      if (palmA && palmB && wristRatio < CONFIG.POSE.TWO_HAND_PUSH_RATIO) {
+        out.twoHandPush = true;
+        if (!this.lastTwoHandPush) out.twoHandPushFired = true;
+      }
+    }
+    this.lastTwoHandPush = out.twoHandPush;
+
+    // Top-level aliases — prefer right, fall through to left.
+    const primary = out.right.present ? out.right : (out.left.present ? out.left : null);
+    if (primary) {
+      out.aimNDC = primary.aimNDC;
+      out.aimSource = primary.aimSource;
+    }
+    for (const slot of ['left', 'right']) {
+      const h = out[slot];
+      if (!h.present) continue;
+      out.snapPrimed = out.snapPrimed || h.snapPrimed;
+      out.snapFired = out.snapFired || h.snapFired;
+      out.openPalm = out.openPalm || h.openPalm;
+      out.pointingIndex = out.pointingIndex || h.pointingIndex;
+      out.indexCurled = out.indexCurled || h.indexCurled;
+      out.pistolPose = out.pistolPose || h.pistolPose;
+      out.gripPose = out.gripPose || h.gripPose;
+      out.wristSnapUp = out.wristSnapUp || h.wristSnapUp;
+      out.swingDown = out.swingDown || h.swingDown;
+      out.punchFired = out.punchFired || h.punchFired;
+    }
+
+    return out;
+  }
+
+  _classifyHand(lm, state, nowMs) {
     const fingerT = CONFIG.POSE.FINGER_EXT_THRESHOLD;
+    const out = emptyHandResult();
+    out.present = true;
 
     const openPalm = detectOpenPalm(lm, fingerT);
     const pointing = detectPointing(lm, fingerT);
     const pistol = detectPistolPose(lm, fingerT);
     const grip = detectGripPose(lm, fingerT);
     const snapDist = snapRatio(lm);
-
     out.openPalm = openPalm;
     out.pointingIndex = pointing;
     out.pistolPose = pistol;
@@ -192,88 +289,91 @@ export class PoseClassifier {
     const ndcX = (1 - aimX) * 2 - 1;
     const ndcY = -(aimY * 2 - 1);
     const alpha = CONFIG.POSE.AIM_SMOOTH_ALPHA;
-    this.smoothAimX = ema(this.smoothAimX, ndcX, alpha);
-    this.smoothAimY = ema(this.smoothAimY, ndcY, alpha);
-    out.aimNDC = { x: this.smoothAimX, y: this.smoothAimY };
+    state.smoothAimX = ema(state.smoothAimX, ndcX, alpha);
+    state.smoothAimY = ema(state.smoothAimY, ndcY, alpha);
+    out.aimNDC = { x: state.smoothAimX, y: state.smoothAimY };
 
     // Snap (Mustang)
-    const lastDist = this.lastSnapDistance ?? snapDist;
+    const lastDist = state.lastSnapDistance ?? snapDist;
     const dDist = snapDist - lastDist;
-    this.lastSnapDistance = snapDist;
+    state.lastSnapDistance = snapDist;
     const primeThresh = CONFIG.POSE.SNAP_PRIME_RATIO;
     const releaseThresh = CONFIG.POSE.SNAP_RELEASE_RATIO;
     const releaseSpeed = CONFIG.POSE.SNAP_RELEASE_SPEED;
     if (snapDist < primeThresh) {
-      this.snapLatched = true;
-    } else if (this.snapLatched && (snapDist > releaseThresh || dDist > releaseSpeed)) {
-      this.snapLatched = false;
+      state.snapLatched = true;
+    } else if (state.snapLatched && (snapDist > releaseThresh || dDist > releaseSpeed)) {
+      state.snapLatched = false;
       out.snapFired = true;
     }
-    out.snapPrimed = this.snapLatched;
+    out.snapPrimed = state.snapLatched;
 
-    // Pointing → curl trigger (legacy Mech, still emitted)
+    // Pointing → curl trigger
     const indexAngle = angle3(lm[LM.INDEX_MCP], lm[LM.INDEX_PIP], lm[LM.INDEX_DIP]);
     const extAngle = CONFIG.POSE.INDEX_EXTENDED_ANGLE;
     const curlAngle = CONFIG.POSE.INDEX_CURLED_ANGLE;
     if (pointing && indexAngle > extAngle) {
-      this.indexExtendedLatched = true;
-    } else if (this.indexExtendedLatched && indexAngle < curlAngle) {
-      this.indexExtendedLatched = false;
+      state.indexExtendedLatched = true;
+    } else if (state.indexExtendedLatched && indexAngle < curlAngle) {
+      state.indexExtendedLatched = false;
       out.indexCurled = true;
     }
 
-    // Two-hand push
-    if (out.twoHands) {
-      const otherIdx = dominantIdx === 0 ? 1 : 0;
-      const lmOther = result.landmarks[otherIdx];
-      const palmA = openPalm;
-      const palmB = detectOpenPalm(lmOther, fingerT);
-      const wristDist = dist2D(lm[LM.WRIST], lmOther[LM.WRIST]);
-      const palmRef = dist2D(lm[LM.WRIST], lm[LM.MIDDLE_MCP]) || 0.001;
-      const wristRatio = wristDist / palmRef;
-      if (palmA && palmB && wristRatio < CONFIG.POSE.TWO_HAND_PUSH_RATIO) {
-        out.twoHandPush = true;
-        if (!this.lastTwoHandPush) out.twoHandPushFired = true;
-      }
-    }
-    this.lastTwoHandPush = out.twoHandPush;
-
-    // Motion tracking for wrist snap up & swing down
+    // Wrist snap up
     const palmRef = dist2D(lm[LM.WRIST], lm[LM.MIDDLE_MCP]) || 0.001;
-    this.wristYHistory.push({ y: lm[LM.WRIST].y, t: nowMs });
-    while (this.wristYHistory.length > 0 && nowMs - this.wristYHistory[0].t > 220) {
-      this.wristYHistory.shift();
+    state.wristYHistory.push({ y: lm[LM.WRIST].y, t: nowMs });
+    while (state.wristYHistory.length > 0 && nowMs - state.wristYHistory[0].t > 220) {
+      state.wristYHistory.shift();
     }
-    if (this.wristYHistory.length >= 3 && nowMs > this.wristSnapCooldown) {
-      const oldest = this.wristYHistory[0];
-      const newest = this.wristYHistory[this.wristYHistory.length - 1];
+    if (state.wristYHistory.length >= 3 && nowMs > state.wristSnapCooldown) {
+      const oldest = state.wristYHistory[0];
+      const newest = state.wristYHistory[state.wristYHistory.length - 1];
       const dt = (newest.t - oldest.t) / 1000;
       if (dt >= 0.05) {
         const dy = (newest.y - oldest.y) / palmRef;
-        const speed = dy / dt; // y is downward in image space → negative = upward
+        const speed = dy / dt;
         if (speed < -3.2) {
           out.wristSnapUp = true;
-          this.wristSnapCooldown = nowMs + 350;
+          state.wristSnapCooldown = nowMs + 350;
         }
       }
     }
 
+    // Swing down
     const hcx = (lm[LM.WRIST].x + lm[LM.MIDDLE_MCP].x) / 2;
     const hcy = (lm[LM.WRIST].y + lm[LM.MIDDLE_MCP].y) / 2;
-    this.handCenterHistory.push({ x: hcx, y: hcy, t: nowMs });
-    while (this.handCenterHistory.length > 0 && nowMs - this.handCenterHistory[0].t > 280) {
-      this.handCenterHistory.shift();
+    state.handCenterHistory.push({ x: hcx, y: hcy, t: nowMs });
+    while (state.handCenterHistory.length > 0 && nowMs - state.handCenterHistory[0].t > 280) {
+      state.handCenterHistory.shift();
     }
-    if (this.handCenterHistory.length >= 3 && nowMs > this.swingCooldown) {
-      const oldest = this.handCenterHistory[0];
-      const newest = this.handCenterHistory[this.handCenterHistory.length - 1];
+    if (state.handCenterHistory.length >= 3 && nowMs > state.swingCooldown) {
+      const oldest = state.handCenterHistory[0];
+      const newest = state.handCenterHistory[state.handCenterHistory.length - 1];
       const dt = (newest.t - oldest.t) / 1000;
       if (dt >= 0.05) {
         const dy = (newest.y - oldest.y) / palmRef;
         const speed = dy / dt;
         if (speed > 3.6) {
           out.swingDown = true;
-          this.swingCooldown = nowMs + 480;
+          state.swingCooldown = nowMs + 480;
+        }
+      }
+    }
+
+    // Punch (closed fist thrust toward camera → palm grows fast)
+    state.palmSizeHistory.push({ s: palmRef, t: nowMs });
+    while (state.palmSizeHistory.length > 0 && nowMs - state.palmSizeHistory[0].t > 240) {
+      state.palmSizeHistory.shift();
+    }
+    if (grip && state.palmSizeHistory.length >= 3 && nowMs > state.punchCooldown) {
+      const oldest = state.palmSizeHistory[0];
+      const newest = state.palmSizeHistory[state.palmSizeHistory.length - 1];
+      const dt = (newest.t - oldest.t) / 1000;
+      if (dt >= 0.06 && oldest.s > 1e-4) {
+        const growthRate = (newest.s / oldest.s - 1) / dt;
+        if (growthRate > 1.6) {
+          out.punchFired = true;
+          state.punchCooldown = nowMs + 380;
         }
       }
     }
