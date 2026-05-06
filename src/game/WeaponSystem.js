@@ -13,6 +13,7 @@ export class WeaponSystem {
     this.reloadEnds = 0;
     this.lastFireMs = 0;
     this.onFire = null;
+    this.fireSoundOverride = null;
   }
 
   getCurrent() {
@@ -82,7 +83,7 @@ export class WeaponSystem {
         this.ammo[this.current]--;
         this.lastFireMs = nowMs;
         this.gunView.fire();
-        this.audio?.play(this.current === 'pistol' ? 'pistol' : 'rifle');
+        this.audio?.play(this.fireSoundOverride || (this.current === 'pistol' ? 'pistol' : 'rifle'));
         if (this.onFire) this.onFire(pose);
       } else {
         if (!w.auto || nowMs - this.lastFireMs > 200) {

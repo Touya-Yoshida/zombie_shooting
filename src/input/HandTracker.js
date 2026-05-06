@@ -11,10 +11,11 @@ export class HandTracker {
 
   async init(videoEl) {
     this.video = videoEl;
-    const fileset = await FilesetResolver.forVisionTasks('/wasm');
+    const base = import.meta.env.BASE_URL || '/';
+    const fileset = await FilesetResolver.forVisionTasks(`${base}wasm`);
     this.landmarker = await HandLandmarker.createFromOptions(fileset, {
       baseOptions: {
-        modelAssetPath: '/models/hand_landmarker.task',
+        modelAssetPath: `${base}models/hand_landmarker.task`,
         delegate: 'GPU'
       },
       runningMode: 'VIDEO',

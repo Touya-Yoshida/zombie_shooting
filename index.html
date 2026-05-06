@@ -10,42 +10,83 @@
     <video id="video" autoplay muted playsinline></video>
     <canvas id="three"></canvas>
     <div id="hud">
+      <div id="damage-vignette"></div>
       <div id="reticle"></div>
       <div id="hand-overlay">
-        <canvas id="hand-canvas" width="160" height="120"></canvas>
+        <canvas id="hand-canvas" width="200" height="240"></canvas>
         <div id="hand-status">未検出</div>
       </div>
       <div id="hud-top">
-        <div id="weapon-label">PISTOL</div>
+        <div id="weapon-label">FLAME</div>
         <div id="score-display">
           <div id="time-survived">00:00</div>
           <div id="kills">Kills: 0</div>
         </div>
       </div>
+      <div id="mode-badge">TIMED</div>
       <div id="hud-bottom">
         <div id="hp-container">
           <div id="hp-bar"></div>
           <div id="hp-text">100 / 100</div>
         </div>
         <div id="ammo-display">
-          <div id="ammo-current">7</div>
+          <div id="ammo-current">∞</div>
           <div id="ammo-divider">/</div>
-          <div id="ammo-max">7</div>
+          <div id="ammo-max">∞</div>
         </div>
       </div>
       <div id="banner"></div>
     </div>
 
     <div id="start-overlay">
-      <div class="overlay-card">
-        <h1>HAND-TRACKING ZOMBIE SHOOTER</h1>
-        <p>Webカメラで手のトラッキングを行い、指鉄砲でゾンビを倒すサバイバルFPS。</p>
-        <ul>
-          <li>指鉄砲の形 → <b>拳銃</b></li>
-          <li>両手で構える → <b>ライフル</b></li>
-          <li>人差し指を曲げる → <b>発射</b></li>
-          <li>手を画面外に出す → <b>リロード</b></li>
+      <div class="overlay-card start-card">
+        <h1>FLAME ALCHEMIST SURVIVAL</h1>
+        <p>カメラに手を映し、<b>指パッチン</b>で炎を放ってゾンビを焼き尽くせ。</p>
+
+        <div class="select-section">
+          <div class="select-label">キャラクターを選択</div>
+          <div id="character-select"></div>
+        </div>
+
+        <div class="select-section">
+          <div class="select-label">モーション実演</div>
+          <div id="hand-demo-wrap">
+            <canvas id="hand-demo" width="360" height="260"></canvas>
+          </div>
+        </div>
+
+        <div class="select-section">
+          <div class="select-label">ゲームモード</div>
+          <div id="mode-select">
+            <button type="button" class="mode-card selected" data-mode="timed">
+              <div class="mode-name">時間制限</div>
+              <div class="mode-desc">3分間生き延びろ</div>
+            </button>
+            <button type="button" class="mode-card" data-mode="endless">
+              <div class="mode-name">無制限</div>
+              <div class="mode-desc">死ぬまで耐えろ</div>
+            </button>
+          </div>
+        </div>
+
+        <ul class="how-to">
+          <li>親指と中指を近づける → <b>炎チャージ</b></li>
+          <li>指を弾く（パッチン）→ <b>火球を発射</b></li>
+          <li>手を画面外に出す → <b>クールダウン</b></li>
         </ul>
+
+        <div class="select-section">
+          <div class="select-label">ハイスコア</div>
+          <div id="scoreboard">
+            <div class="scoreboard-tabs">
+              <button type="button" class="scoreboard-tab selected" data-tab="timed">時間制限</button>
+              <button type="button" class="scoreboard-tab" data-tab="endless">無制限</button>
+            </div>
+            <ol id="scoreboard-list"></ol>
+            <button type="button" id="scores-clear-btn">記録を消去</button>
+          </div>
+        </div>
+
         <button id="start-btn">スタート（カメラ許可）</button>
         <button id="recalibrate-btn" style="display:none">再キャリブレーション</button>
       </div>
@@ -64,12 +105,20 @@
 
     <div id="gameover-overlay" style="display:none">
       <div class="overlay-card">
-        <h1>GAME OVER</h1>
+        <h1 id="gameover-title">GAME OVER</h1>
+        <div id="gameover-cause"></div>
         <div id="gameover-stats">
           <div>生存時間: <span id="final-time">--</span></div>
           <div>キル数: <span id="final-kills">--</span></div>
+          <div>スコア: <span id="final-score">--</span></div>
+        </div>
+        <div id="gameover-rank"></div>
+        <div id="gameover-scoreboard">
+          <div class="select-label">トップ5</div>
+          <ol id="gameover-scoreboard-list"></ol>
         </div>
         <button id="restart-btn">もう一度</button>
+        <button type="button" id="back-to-title-btn">タイトルへ</button>
       </div>
     </div>
 
