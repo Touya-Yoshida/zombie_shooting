@@ -20,6 +20,20 @@ export class GunViewModel {
     this.setWeapon('pistol');
   }
 
+  setVisible(visible) {
+    this.group.visible = visible;
+  }
+
+  getSparkWorldPosition(aimNDC) {
+    const local = new THREE.Vector3(
+      (aimNDC?.x ?? 0) * 0.28,
+      (aimNDC?.y ?? 0) * 0.20 - 0.05,
+      -0.40
+    );
+    this.camera.localToWorld(local);
+    return local;
+  }
+
   _createPistol() {
     const g = new THREE.Group();
     const bodyMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });

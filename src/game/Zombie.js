@@ -49,7 +49,7 @@ export class Zombie {
     return this.state === STATE.DEAD;
   }
 
-  update(dt, nowMs, playerPos, gameState, audio) {
+  update(dt, nowMs, playerPos, gameState, audio, canAttack = true) {
     if (this.state === STATE.DEAD) return;
 
     if (this.state === STATE.DYING) {
@@ -76,11 +76,13 @@ export class Zombie {
     if (distance < CONFIG.ZOMBIES.MELEE_RANGE) {
       this.state = STATE.ATTACKING;
       animateZombieAttack(this.mesh, nowMs * 0.001);
-      const dps = CONFIG.ZOMBIES.MELEE_DPS;
-      gameState.takeDamage(dps * dt, nowMs);
-      if (nowMs - this.lastAttackMs > 600 && audio) {
-        audio.play('zombieGrowl');
-        this.lastAttackMs = nowMs;
+      if (canAttack) {
+        const dps = CONFIG.ZOMBIES.MELEE_DPS;
+        gameState.takeDamage(dps * dt, nowMs);
+        if (nowMs - this.lastAttackMs > 600 && audio) {
+          audio.play('zombieGrowl');
+          this.lastAttackMs = nowMs;
+        }
       }
     } else {
       this.state = STATE.WALKING;
